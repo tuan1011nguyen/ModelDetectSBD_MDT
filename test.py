@@ -1,3 +1,106 @@
+from PIL import Image
+import cv2
+from matplotlib import pyplot as plt
+import numpy as np
+import onnxruntime as ort
+import time
+
+def crop_image(image, row_step=23, col_step=16, row_start=0, row_end=208, col_start=0, col_end=65, crop_height=23, crop_width=32):
+    """
+    Cắt ảnh thành các mảnh con theo cấu trúc bước nhảy.
+
+    Parameters:
+        - image: Ảnh đầu vào (numpy array).
+        - row_step: Bước nhảy theo chiều dọc.
+        - col_step: Bước nhảy theo chiều ngang.
+        - row_start, row_end: Vị trí bắt đầu và kết thúc cắt theo chiều dọc.
+        - col_start, col_end: Vị trí bắt đầu và kết thúc cắt theo chiều ngang.
+        - crop_height, crop_width: Kích thước của mỗi mảnh ảnh cắt ra.
+
+    Returns:
+        - Danh sách các mảnh ảnh con.
+    """
+    crop_img_sbd_mdt = []
+    for i in range(row_start, row_end, row_step):
+        for j in range(col_start, col_end, col_step):
+            imgcrop = image[i:i+crop_height, j:j+crop_width]
+            crop_img_sbd_mdt.append(imgcrop)
+    return crop_img_sbd_mdt
+
+
+# Đường dẫn tới mô hình ONNX
+onnx_model_path = "/mnt/d/examgrading/BuilModelDetecSBD_DT/model/cnn_model.onnx"
+
+# Tải mô hình ONNX
+session = ort.InferenceSession(onnx_model_path)
+
+# Lấy tên input của mô hình
+input_name = session.get_inputs()[0].name
+
+# Đọc ảnh đầu vào và cắt thành các mảnh nhỏ
+imageSBD = cv2.imread('/mnt/d/examgrading/Dataset/Dataset/arena/sbd/SBD.thptvotruongtoan.0022.jpg')
+image_sbd = crop_image(imageSBD)
+
+# Tạo từ điển để lưu kết quả
+results = []
+label_check = {0: "(0, 0)", 1: "(0, 1)", 2: "(1, 0)", 3: "(1, 1)"}
+
+# Lặp qua từng ảnh trong danh sách
+for idx, image in enumerate(image_sbd):
+    # Bắt đầu tính thời gian
+    start = time.time()
+
+    # Thay đổi kích thước thành (32, 23) nếu cần
+    image = cv2.resize(image, (23, 32))
+
+    # Chuyển ảnh thành mảng NumPy và chuẩn hóa giá trị pixel (0-255 -> 0-1)
+    image_array = np.array(image).astype(np.float32) / 255.0
+
+    # Kiểm tra xem ảnh có 3 kênh (RGB) hay không
+    if image_array.shape[-1] == 3:
+        # Chuyển ảnh từ (height, width, channels) thành (channels, height, width)
+        image_array = np.transpose(image_array, (2, 0, 1))  # Tạo dạng (C, H, W)
+    else:
+        raise ValueError("Ảnh không phải RGB hoặc có số kênh khác 3")
+
+    # Thêm chiều batch, ảnh đầu vào sẽ có shape (1, 3, 32, 23)
+    image_array = np.expand_dims(image_array, axis=0)
+    image_array = np.transpose(image_array, (0, 2, 3, 1))
+
+    # Chạy mô hình và lấy kết quả
+    outputs = session.run(None, {input_name: image_array})
+    end_time = time.time()
+    
+    # Giả sử outputs[0] chứa kết quả phân loại
+    predicted_class = np.argmax(outputs[0], axis=1)  # Lấy lớp có xác suất cao nhất
+    
+    # Lưu kết quả vào danh sách
+    result = {
+        "image_index": idx,
+        "output":outputs,
+        "predicted_class_index": predicted_class[0],
+        "predicted_class_label": label_check[predicted_class[0]],
+        "prediction_time": end_time - start
+    }
+    results.append(result)
+    plt.imshow(cv2.resize(image,(32,23)))
+    plt.title(label_check[predicted_class[0]])
+    plt.show()
+
+# In ra kết quả cho tất cả các ảnh
+for res in results:
+    print(f"Image Index: {res['image_index']}")
+    print(f"Ouput: {res['output']}")
+    print(f"Predicted class index: {res['predicted_class_index']}")
+    print(f"Predicted class label: {res['predicted_class_label']}")
+    print(f"Prediction time: {res['prediction_time']} seconds")
+    print("="*10)
+
+
+
+
+
+
 
 # import time
 # import tensorflow as tf
@@ -52,81 +155,6 @@
 
 # # Save the ONNX model
 # onnx.save(onnx_model, "/mnt/d/examgrading/BuilModelDetecSBD_DT/model/cnn_model.onnx")
-from PIL import Image
-import numpy as np
-import onnxruntime as ort
-import time
-
-# Đường dẫn tới mô hình ONNX
-onnx_model_path = "/mnt/d/examgrading/BuilModelDetecSBD_DT/model/cnn_model.onnx"
-
-# Tải mô hình ONNX
-session = ort.InferenceSession(onnx_model_path)
-
-# Lấy tên input của mô hình
-input_name = session.get_inputs()[0].name
-
-# Danh sách các đường dẫn tới ảnh
-image_paths = [
-    "/mnt/d/examgrading/BuilModelDetecSBD_DT/Dataset/cropped_images/SBD_crop_5.png",
-    "/mnt/d/examgrading/BuilModelDetecSBD_DT/Dataset/cropped_images/SBD_crop_6.png",
-    # Thêm các đường dẫn ảnh khác ở đây
-]
-
-# Tạo từ điển để lưu kết quả
-results = []
-label_check = {0: "(0, 0)", 1: "(0, 1)", 2: "(1, 0)", 3: "(1, 1)"}
-
-# Lặp qua từng ảnh trong danh sách
-for image_path in image_paths:
-    # Bắt đầu tính thời gian
-    start = time.time()
-
-    # Tải ảnh và thay đổi kích thước thành (23, 32)
-    image = Image.open(image_path)
-    image = image.resize((23, 32))  # Kích thước (23, 32)
-
-    # Chuyển ảnh thành mảng NumPy và chuẩn hóa giá trị pixel (0-255 -> 0-1)
-    image_array = np.array(image).astype(np.float32) / 255.0
-
-    # Kiểm tra xem ảnh có 3 kênh (RGB) hay không
-    if image_array.shape[-1] == 3:
-        # Chuyển ảnh từ (height, width, channels) thành (channels, height, width)
-        image_array = np.transpose(image_array, (2, 0, 1))  # Tạo dạng (C, H, W)
-    else:
-        raise ValueError("Ảnh không phải RGB hoặc có số kênh khác 3")
-
-    # Thêm chiều batch, ảnh đầu vào sẽ có shape (1, 3, 32, 23)
-    image_array = np.expand_dims(image_array, axis=0)
-
-    # Chuyển đổi lại thứ tự các chiều từ (batch_size, channels, height, width) thành (batch_size, height, width, channels)
-    image_array = np.transpose(image_array, (0, 2, 3, 1))  # Chuyển từ (1, 3, 32, 23) thành (1, 32, 23, 3)
-
-    # Chạy mô hình và lấy kết quả
-    outputs = session.run(None, {input_name: image_array})
-    end_time = time.time()
-    
-    # Giả sử outputs[0] chứa kết quả phân loại
-    predicted_class = np.argmax(outputs[0], axis=1)  # Lấy lớp có xác suất cao nhất
-    
-    # Lưu kết quả vào danh sách
-    result = {
-        "image_path": image_path,
-        "predicted_class_index": predicted_class[0],
-        "predicted_class_label": label_check[predicted_class[0]],
-        "prediction_time": end_time - start
-    }
-    results.append(result)
-
-# In ra kết quả cho tất cả các ảnh
-for res in results:
-    print(f"Image: {res['image_path']}")
-    print(f"Predicted class index: {res['predicted_class_index']}")
-    print(f"Predicted class label: {res['predicted_class_label']}")
-    print(f"Prediction time: {res['prediction_time']} seconds")
-    print("="*10)
-
-
 
 
 # import tensorrt as trt

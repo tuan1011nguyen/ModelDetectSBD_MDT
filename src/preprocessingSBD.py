@@ -3,7 +3,7 @@ from matplotlib import pyplot as plt
 import numpy as np
 import onnxruntime as ort
 import time
-from datasetProcessing import generate_consecutive_pairs
+from src.datasetProcessing import generate_consecutive_pairs
 
 
 def load_onnx_model(model_path):
@@ -37,6 +37,7 @@ def crop_image(image, row_step=23, col_step=16, row_start=0, row_end=208, col_st
     Returns:
         - Danh sách các mảnh ảnh con.
     """
+    image = cv2.resize(image,(96,230))
     crop_img_sbd_mdt = []
     for i in range(row_start, row_end, row_step):
         for j in range(col_start, col_end, col_step):
