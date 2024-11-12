@@ -1,7 +1,7 @@
 import cv2
 from matplotlib import pyplot as plt
 
-from preprocessingSBD import process_image_and_classify
+from src.preprocessingSBD import process_image_and_classify
 
 
 # Sử dụng hàm:
